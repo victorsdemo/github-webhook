@@ -20,5 +20,5 @@
 - [Docker installation](https://www.docker.com/products/docker-desktop)
 - [Today's Slides](https://speakerdeck.com/bswinnerton/building-github-integrations-with-webhooks-and-rest)
 
-## :Source: References
+## :books: References
 - [Webhooks With REST](https://github.com/githubsatelliteworkshops/webhooks-with-rest)
