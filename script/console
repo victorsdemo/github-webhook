@@ -1,0 +1,9 @@
+#!/bin/sh
+# Usage: script/console
+# Starts a development rails console inside a docker container.
+
+# Set the RAILS_ENV if not currently set
+: ${RAILS_ENV:=development}
+export RAILS_ENV
+
+DISABLE_SPRING=true docker run --rm -it -e DISABLE_SPRING --name servicerepo --mount type=bind,source="$(pwd)"/servicerepo,target=/data/apps/servicerepo servicerepo:latest bundle exec rails c

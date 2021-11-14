@@ -1,0 +1,7 @@
+#!/bin/sh
+
+echo "Copying .env.example to .env..."
+cp ./servicerepo/.env.example ./servicerepo/.env
+
+echo "Building docker image..."
+docker build -t servicerepo .

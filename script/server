@@ -1,0 +1,32 @@
+#!/bin/sh
+# Usage: script/server
+# Starts a server for development purposes inside a docker container.
+
+# Set the RAILS_ENV if not currently set
+: ${RAILS_ENV:=development}
+export RAILS_ENV
+
+APP_CONTAINER=$(DISABLE_SPRING=true docker run --rm -it -d -p 3000 -e DISABLE_SPRING --name servicerepo --mount type=bind,source="$(pwd)"/servicerepo,target=/data/apps/servicerepo servicerepo:latest)
+PROXY_CONTAINER=$(docker run -it -d -p 4040 --name proxy --link servicerepo:http wernight/ngrok ngrok http http:3000)
+
+
+sleep 3
+
+PROXY_HOST=$(docker port proxy 4040 | head -1)
+TUNNELS_DATA=$(curl -s $PROXY_HOST/api/tunnels)
+PUBLIC_URL=$(echo $TUNNELS_DATA | jq '.tunnels[0].public_url')
+
+cat logo.txt
+echo ""
+
+bold=$(tput bold)
+normal=$(tput sgr0)
+
+echo "+----------------------------------------------+"
+echo "| Your public url is: ${bold}$PUBLIC_URL${normal} |"
+echo "+----------------------------------------------+"
+echo ""
+echo "This is the output of your web app."
+echo "==================================="
+echo ""
+docker attach $APP_CONTAINER
