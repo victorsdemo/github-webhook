@@ -1,27 +1,26 @@
 class WebhooksController < ApplicationController
-  WEBHOOK_HEADERS = ["HTTP_USER_AGENT", "CONTENT_TYPE", "HTTP_X_GITHUB_EVENT", "HTTP_X_GITHUB_DELIVERY", "HTTP_X_HUB_SIGNATURE"]
+  WEBHOOK_HEADERS = %w[HTTP_USER_AGENT CONTENT_TYPE HTTP_X_GITHUB_EVENT HTTP_X_GITHUB_DELIVERY HTTP_X_HUB_SIGNATURE]
 
-  before_action :verify_signature!
-  before_action :verify_event_type!
+  #before_action :verify_signature!
 
   def create
-    return error("not labeled") unless labeled?
-    return error("not closed") unless closed?
-    return error("not merged") unless merged_into_master?
-
-    create_changelog_entry
-
     puts "Webhook successfully received!!!"
     WEBHOOK_HEADERS.each do |header|
       puts "#{header}: #{request.headers[header]}"
     end
+    event = JSON.parse(params[:payload])
+    type = request.headers["HTTP_X_GITHUB_EVENT"]
+    case type
+    when "repository"
+      repository_handler(event)
+    when "ping"
+      render(status: 202, json: "ping received")
+    else
+      error("Unsupported event type: #{type}")
+    end
   end
 
   private
-
-  def payload
-    params["webhook"]
-  end
 
   def error(msg)
     text = "Webhook invalid: #{msg}"
@@ -29,82 +28,38 @@ class WebhooksController < ApplicationController
     render(status: 422, json: text)
   end
 
-  def verify_event_type!
-    type = request.headers["HTTP_X_GITHUB_EVENT"]
-    return if type == "pull_request"
-    error("unallowed event type: #{type}")
-  end
-
-  def labeled?
-    payload["pull_request"]["labels"].any? do |label|
-      label["name"] == "documentation"
-    end
-  end
-
-  def closed?
-    payload["action"] == "closed"
-  end
-
-  def merged_into_master?
-    merged = payload["pull_request"]["merged"] == true
-    in_to_master = payload["pull_request"]["base"]["ref"] == "master"
-
-    merged && in_to_master
-  end
-
   def octokit
     Octokit::Client.new(access_token: ENV["GITHUB_PERSONAL_ACCESS_TOKEN"])
   end
 
-  def create_changelog_entry
-    content, sha = get_file
-    return unless content
-
-    octokit.update_contents(repo, # repository we're updating
-                            "docs/index.md", # file we're updating
-                            "New changelog entry", # commit message for update
-                            sha, # head sha for the file we're updating
-                            content + format_changes) # actual contents
-  end
-
-  def get_file
-    response = octokit.contents(repo, path: "docs/index.md")
-    [Base64.decode64(response["content"]), response["sha"]]
-  rescue
-    nil
-  end
-
-  def repo
-    payload["repository"]["full_name"]
-  end
-
-  def format_changes
-    author_avatar = payload["pull_request"]["user"]["avatar_url"]
-    author_name   = payload["pull_request"]["user"]["login"]
-    author_url    = payload["pull_request"]["user"]["html_url"]
-
-    diff_url = payload["pull_request"]["diff_url"]
-    pr_url = payload["pull_request"]["html_url"]
-
-    <<-ENTRY
-# #{Time.now.utc.to_s}
-  
-By: ![avatar](#{author_avatar}&s=50) [#{author_name}](#{author_url})
-
-#{change_description}
-
-[[diff](#{diff_url})][[pull request](#{pr_url})]
-* * *
-    ENTRY
-  end
-
-  def change_description
-    body = payload["pull_request"]["body"]
-    if matches = body.match(/<changes>(.*)<\/changes>/m)
-      matches.captures.first.strip
+  def repository_handler(event)
+    if event["action"] == 'created'
+      repo = event["repository"]["full_name"]
+      protect_master_branch(repo)
     else
-      payload["pull_request"]["title"]
+      error("Unsupported event action")
     end
+  end
+
+  # Protect the default branch on new repositories
+  def protect_master_branch(repo)
+    options = {
+      # This header is necessary for beta access to the branch_protection API
+      # See https://docs.github.com/en/rest/reference/repos#branches
+      # https://docs.github.com/en/rest/reference/repos#get-branch-protection
+      accept: 'application/vnd.github.v3+json',
+      # Require at least two approving reviews on a pull request before merging
+      required_pull_request_reviews: { required_approving_review_count: 2 },
+      # Enforce all configured restrictions for administrators
+      enforce_admins: true
+    }
+    octokit.branch_protection(repo, "main", options)
+    issue = octokit.create_issue(
+      repo,
+      "Master branch protected",
+      "he master branch has been protected on this repo per https://docs.github.com/en/rest/reference/repos#get-branch-protection"
+    )
+    octokit.close_issue(repo, issue["number"])
   end
 
   def verify_signature!
