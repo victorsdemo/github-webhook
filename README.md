@@ -25,4 +25,5 @@ The servicerepo is a simple web service that listens for organization events to 
 
 ## :books: References
 - [Webhooks With REST](https://github.com/githubsatelliteworkshops/webhooks-with-rest)
+- [GitHub Docs Developer](https://docs.github.com/en/developers)
 - [branchguard](https://github.com/branchguard/branchguard/blob/master/app.rb)

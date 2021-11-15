@@ -31,5 +31,4 @@ override.tf.json
 .idea/*
 .idea
 
-setenv.sh
-reset.sh
+reset
